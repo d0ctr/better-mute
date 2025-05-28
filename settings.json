@@ -1,0 +1,7 @@
+{
+    "hotkey_mute": "",
+    "hotkey_unmute": "",
+    "hotkey_toggle": "ctrl+alt+t",
+    "status_corner": "top-right",
+    "start_on_startup": true
+}
