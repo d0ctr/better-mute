@@ -28,7 +28,7 @@ jobs:
         # the output exe name
         exe_name: better-mute
         # the version of python
-        python_version: 3.10
+        python_version: 3.9
         # add the icon mark into your executable, the file path of your ico, e.g. logo.png or logo.ico
         icon: resources/mic.icon
         # Whether upload the build executable to artifact
