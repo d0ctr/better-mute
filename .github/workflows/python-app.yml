@@ -29,6 +29,7 @@ jobs:
 
       - name: Get executable filename
         id: exe
+        shell: bash
         run: |
           exe_file=$(find dist -name "*.exe" | head -n1)
           echo "EXE_PATH=$exe_file" >> $GITHUB_ENV
