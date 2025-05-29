@@ -22,6 +22,7 @@ jobs:
 
       - name: Set version variable
         id: vars
+        shell: bash
         run: echo "TAG_NAME=v$(date -u +%Y%m%d)" >> $GITHUB_ENV
 
       - name: Build exe with PyInstaller
