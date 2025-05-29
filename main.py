@@ -15,7 +15,6 @@ from hotkeys import HotkeyManager
 
 
 def main():
-
     # Start event loop
     logging.info('Application started')
     app = QApplication(sys.argv)

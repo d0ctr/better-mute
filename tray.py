@@ -5,10 +5,10 @@ from settings import Settings
 import logging
 
 from audio_control import AudioController
-from commons import Colors
+from commons import MicStatus
 
 
-def create_dot_icon(color):
+def create_dot_icon(color: QColor):
     pixmap = QPixmap(24, 24)
     pixmap.fill(QColor(0, 0, 0, 0))
     painter = QPainter(pixmap)
@@ -25,12 +25,10 @@ class TrayIcon(QSystemTrayIcon):
         self.menu = QMenu()
 
         # Fallback icons (must be set before update_status)
-        self.icon_muted = QIcon.fromTheme('audio-input-microphone-muted')
-        if self.icon_muted.isNull():
-            self.icon_muted = create_dot_icon(Colors['RED'])
-        self.icon_unmuted = QIcon.fromTheme('audio-input-microphone')
-        if self.icon_unmuted.isNull():
-            self.icon_unmuted = create_dot_icon(Colors['GREEN'])
+        self.icon_muted = create_dot_icon(MicStatus.toColor(MicStatus.MUTED))
+        self.icon_unmuted = create_dot_icon(MicStatus.toColor(MicStatus.UNMUTED))
+        self.icon_disabled = create_dot_icon(MicStatus.toColor(MicStatus.DISABLED))
+        self.icon_in_use = create_dot_icon(MicStatus.toColor(MicStatus.INUSE))
 
         # Actions
         self.mute_action = QAction('Mute', self)
@@ -56,17 +54,30 @@ class TrayIcon(QSystemTrayIcon):
         self.setContextMenu(self.menu)
         self.setToolTip('Better Mute')
 
-        AudioController.add_mute_change_callback(self.update_status)
+        AudioController.add_listener(self.update_status)
         self.show()
 
-    def update_status(self, muted):
+    def update_status(self, status: MicStatus):
         # Update tray icon and tooltip based on mute status
-        if muted:
-            self.setIcon(self.icon_muted)
-            self.setToolTip('Microphone is muted')
-        else:
-            self.setIcon(self.icon_unmuted)
-            self.setToolTip('Microphone is unmuted')
+        icon = None
+        tooltip = None
+        
+        match status:
+            case MicStatus.MUTED:
+                icon = self.icon_muted
+                tooltip = 'muted'
+            case MicStatus.UNMUTED:
+                icon = self.icon_unmuted
+                tooltip = 'unmuted'
+            case MicStatus.INUSE:
+                icon = self.icon_in_use
+                tooltip = 'in use'
+            case _:
+                icon = self.icon_disabled
+                tooltip = 'disabled'
+
+        self.setIcon(icon)
+        self.setToolTip('Microphone is ' + tooltip)
 
     def _on_mute(self):
         logging.info('TrayIcon: Mute action triggered from tray')

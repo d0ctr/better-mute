@@ -3,9 +3,8 @@ from PyQt5.QtCore import Qt, QRect
 from PyQt5.QtGui import QPainter
 import logging
 
-from audio_control import AudioController
+from audio_control import AudioController, MicStatus
 from settings import Settings
-from commons import Colors
 
 
 CORNER_POSITIONS = {
@@ -20,7 +19,7 @@ class StatusIcon(QWidget):
         super().__init__(parent)
         self.margin = 2
         
-        self.is_in_use = False
+        self.status = MicStatus.DISABLED
         screen = self.screen().geometry()
         min_dim = min(screen.width(), screen.height())
         self.dot_size = max(12, int(min_dim * 0.005))  # Minimum 8px
@@ -28,7 +27,7 @@ class StatusIcon(QWidget):
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setFixedSize(self.dot_size + self.margin * 2, self.dot_size + self.margin * 2)
 
-        AudioController.add_mute_change_callback(self.update_status)
+        AudioController.add_listener(self.update_status)
         Settings.add_listener(self.update_settings)
         
         self.show()
@@ -42,20 +41,14 @@ class StatusIcon(QWidget):
         except Exception:
             pass
 
-    def update_status(self, muted):
-        self.is_muted = muted
-        # self.is_in_use = AudioController.is_in_use()
-        logging.info('StatusIcon: update_status() -> muted=%s', self.is_muted)
+    def update_status(self, status: MicStatus):
+        self.status = status
+        logging.info('StatusIcon: update_status() -> status=%s', self.status)
         self.update()
 
     def paintEvent(self, event):
         painter = QPainter(self)
-        if self.is_in_use:
-            color = Colors['YELLOW']
-        elif self.is_muted:
-            color = Colors['RED']
-        else:
-            color = Colors['GREEN']
+        color = MicStatus.toColor(self.status)
         painter.setRenderHint(QPainter.Antialiasing)
         painter.setBrush(color)
         painter.setPen(Qt.NoPen)
