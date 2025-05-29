@@ -109,76 +109,8 @@ class _AudioController:
         return False
 
     def is_in_use(self):
-        logging.info('AudioController: is_in_use() called')
-        if not self.mic or not self.volume:
-            logging.warning('AudioController: No microphone to check usage')
-            return False
-
-        try:
-            # Get the device enumerator
-            device_enumerator = CoCreateInstance(IMMDeviceEnumerator._iid_,
-                                                 IMMDeviceEnumerator,
-                                                 CLSCTX_ALL)
-
-            # Get the default microphone device ID
-            default_mic_device = device_enumerator.GetDefaultAudioEndpoint(EDataFlow.eCapture.value, ERole.eCommunications.value)
-            if not default_mic_device:
-                logging.warning("Could not get default microphone device.")
-                return False
-            default_mic_id_str = default_mic_device.GetId()
-
-            sessions = AudioUtilities.GetAllSessions()
-            for session in sessions:
-                if session.Process and session.State == 1:  # State == 1 means active
-                    try:
-                        # Get the session's control interface to access device information
-                        session_control = session.QueryInterface(AudioUtilities.IAudioSessionControl2)
-                        if not session_control:
-                            continue
-
-                        # Get the audio meter information to check for activity
-                        audio_meter = session_control.QueryInterface(AudioUtilities.IAudioMeterInformation)
-                        if audio_meter and audio_meter.GetPeakValue() > 0.0:
-                            # Get the audio session's device
-                            session_device = session_control.GetSessionIdentifier()
-                            if session_device:
-                                # The session_device is a string, format is {guid}#{device_id}
-                                # We need to parse the actual device ID part
-                                # However, a simpler check is to see if the session is associated with a capture device.
-                                # A more direct way to check if the session is using *our* specific microphone
-                                # is to get the device for the session and compare its ID.
-
-                                # Get the device for the current session
-                                # This part is tricky as IAudioSessionControl2 doesn't directly give IMMDevice
-                                # We might need to iterate devices and match properties, or find a more direct way.
-
-                                # For now, let's assume if a session has activity and is not system sounds,
-                                # and it's on a capture device, it's using a mic.
-                                # A truly robust check involves matching the session's device ID to our mic's ID.
-                                
-                                # Attempt to get the device for the session
-                                # This is still a simplification, as getting the exact device for a session is not straightforward
-                                # with just IAudioSessionControl2. The session identifier might not directly map to IMMDevice.
-
-                                if not session.IsSystemSoundsSession:
-                                    # Crude check: if it's active and not system sounds, assume it's using the mic.
-                                    # This needs to be improved to check the actual device ID against the default mic.
-                                    pid = session.ProcessId
-                                    process_name = AudioUtilities.GetProcessName(pid) if pid else "Unknown Process"
-                                    logging.info(f"Microphone might be in use by: {process_name} (PID: {pid}) - active audio session detected.")
-                                    return True
-
-                    except Exception as e:
-                        # Log specific session check errors but continue checking other sessions
-                        if hasattr(session, 'ProcessId'):
-                            pid = session.ProcessId
-                            process_name = AudioUtilities.GetProcessName(pid) if pid else "Unknown Process"
-                            logging.error(f"Error checking session for process {process_name} (PID: {pid}): {e}")
-                        else:
-                            logging.error(f"Error checking session (no PID): {e}")
-        except Exception as e:
-            logging.error(f"Error in is_in_use: {e}")
-
+        # TODO: Implement actual detection of microphone usage
+        logging.info('AudioController: is_in_use() called (stub)')
         return False
 
     def status(self) -> MicStatus:
