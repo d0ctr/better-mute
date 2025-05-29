@@ -3,8 +3,8 @@ import logging
 
 # Setup logging
 logging.basicConfig(
-    level=logging.INFO,
-    format='[%(asctime)s] %(levelname)s: %(message)s',
+    level=logging.DEBUG,
+    format='[%(asctime)s] %(filename)s %(levelname)s: %(message)s',
     handlers=[logging.StreamHandler(sys.stdout)]
 )
 
@@ -33,8 +33,8 @@ def main():
     # # Listen for device changes
     # def on_device_change():
     #     logging.info('DeviceChangeListener: Audio device change detected, re-initializing AudioController')
-    #     AudioController.reload()
+    #     AudioController.reload()      
     sys.exit(app.exec_())
 
 if __name__ == "__main__":
-    main() 
+    main()

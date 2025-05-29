@@ -39,7 +39,7 @@ class StartupManager:
         shortcut.WorkingDirectory = working_dir
         shortcut.IconLocation = icon
         shortcut.save()
-        logging.info('Added app to Windows startup: %s', shortcut_path)
+        logging.info('StartupManager: Added app to Windows startup: %s', shortcut_path)
 
 
     def remove_from_startup(self):
@@ -47,6 +47,6 @@ class StartupManager:
         shortcut_path = os.path.join(startup_folder, f'{APP_NAME}.lnk')
         if os.path.exists(shortcut_path):
             os.remove(shortcut_path)
-            logging.info('Removed app from Windows startup: %s', shortcut_path)
+            logging.info('StartupManager: Removed app from Windows startup: %s', shortcut_path)
         else:
-            logging.info('No startup shortcut to remove: %s', shortcut_path) 
+            logging.info('StartupManager: No startup shortcut to remove: %s', shortcut_path) 

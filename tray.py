@@ -103,5 +103,6 @@ class TrayIcon(QSystemTrayIcon):
 
     def exit_app(self):
         logging.info('TrayIcon: Exit action triggered from tray')
+        AudioController.unmute()
         from PyQt5.QtWidgets import QApplication
         QApplication.quit() 

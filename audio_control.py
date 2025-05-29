@@ -1,6 +1,8 @@
+from ctypes import POINTER, cast, pointer
+import json
 import logging
-from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume, IAudioEndpointVolumeCallback, IMMDeviceEnumerator, EDataFlow, ERole
-from comtypes import COMObject, CLSCTX_ALL, CoCreateInstance
+from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume, IAudioEndpointVolumeCallback, IMMNotificationClient, EDataFlow, ERole
+from comtypes import COMObject, CLSCTX_ALL
 
 from commons import MicStatus
 
@@ -15,94 +17,166 @@ class _MuteCallback(COMObject):
 
     def OnNotify(self, pNotify):
         notification_data = pNotify.contents
-        logging.info('MuteCallback: OnNotify (pNotify.bMuted=%s)', notification_data.bMuted)
+        logging.debug('MuteCallback: OnNotify (pNotify.bMuted=%s)', notification_data.bMuted)
         
         try:
             self.listener()
         except Exception as e:
-            logging.error(e)
+            logging.error('MuteCallback.OnNotify:', exc_info=e)
 
-        return 0
+class _DeviceCallback(COMObject):
+    _com_interfaces_ = [IMMNotificationClient]
+
+    def __init__(self, listener):
+        super().__init__()
+        self.listener = listener
+    
+    def OnDefaultDeviceChanged(self, flow, role, pwstrDefaultDeviceId):
+        if flow != EDataFlow.eCapture.value:
+            return
+        if role != ERole.eMultimedia.value:
+            return
+        
+        logging.debug('DeviceCallback: OnDefaultDeviceChanged (flow=%s, role=%s, id=%s)', flow, role, pwstrDefaultDeviceId)
+
+        try:
+            self.listener(pwstrDefaultDeviceId)
+        except Exception as e:
+            logging.error('MuteCallback.OnDefaultDeviceChanged', exc_info=e)
+
+    def OnDeviceAdded(self, pwstrDeviceId):
+        logging.debug('MuteCallback.OnDeviceAdded: %s', pwstrDeviceId)
+        
+    def OnDeviceRemoved(self, pwstrDeviceId):
+        logging.debug('MuteCallback.OnDeviceRemoved: %s', pwstrDeviceId)
+
+    def OnDeviceStateChanged(self, pwstrDeviceId, dwNewState):
+        logging.debug('MuteCallback.OnDeviceStateChanged: %s, state -> %s', pwstrDeviceId, dwNewState)
+        
+    def OnPropertyValueChanged(self, pwstrDeviceId, key):
+        logging.debug('MuteCallback.OnPropertyValueChanged: %s, key=%s', pwstrDeviceId, key)
 
 class _AudioController:
     def __init__(self):
-        self._com_callback = _MuteCallback(self.update)
         self.mic = None
         self.volume = None
-        self.reload()
         self._listeners = set()
+        self.reload()
+        # self._register_device_callback()
     
-    def update(self):
+    def _update_state(self):
         status = self.status()
         for listener in self._listeners:
             try:
                 listener(status)
             except Exception as e:
-                logging.error('Error calling audio controller listener', e)
+                logging.error('AudioController: Error calling audio controller listener', exc_info=e)
+    
+    def _update_device(self, id):
+        if self.mic is not None and self.mic.GetId() == id:
+            logging.debug('AudioController: Default device did not change, skipping')
+            return
+        
+        logging.info('AudioController: Updating active microphone -> (%s)', id)
+        self.reload()
+        
 
     def reload(self):
-        if self.volume is not None:
-            self.volume.UnregisterControlChangeNotify(self._com_callback)
+        if self.mic is not None:
+            logging.debug('AudioController: Unregister listener for old device (%s)', self.mic.GetId())
+            self.volume.UnregisterControlChangeNotify(self._mute_callback)
 
-        self.mic = None
-        self.volume = None
+            logging.debug('AudioController: Unmute old device (%s)', self.mic.GetId())
+            self.unmute()
+
+            logging.debug('AudioController: Release old volume interface')
+            self.volume = None
+
+            logging.debug('AudioController: Release old device (%s)', self.mic.GetId())
+            self.mic = None
+
+            logging.info('AudioController: Released old device')
 
         try:
-            # Get the default input (microphone) device
             self.mic = AudioUtilities.GetMicrophone()
+            logging.info('AudioController: Initialized (mic found: %s)', self.mic.GetId() if bool(self.mic) else False)
         except Exception as e:
-            logging.error(e)
+            logging.error('AudioController.reload', exc_info=e)
+            return
         
-        logging.info('AudioController: Initialized (mic found: %s)', bool(self.mic))
+        self._register_mute_callback()
 
-        if self.mic is not None:
-            interface = self.mic.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
-            self.volume = interface.QueryInterface(IAudioEndpointVolume)
-            self.volume.RegisterControlChangeNotify(self._com_callback)
+    
+    def _register_mute_callback(self):
+        if self.mic is None:
+            return
+        logging.debug('AudioController: Registering volume change listener')
+        self._mute_callback = _MuteCallback(self._update_state)
+        self.volume = None
+        self.volume = self.get_volume()
+        self.volume.RegisterControlChangeNotify(self._mute_callback)
+
+    def _register_device_callback(self):
+        if self.mic is None:
+            return
+        logging.debug('AudioController: Registering device change listener')
+        self._device_callback = _DeviceCallback(self._update_device)
+        AudioUtilities.GetDeviceEnumerator().RegisterEndpointNotificationCallback(self._device_callback)
+
+
+    def get_volume(self):
+        if not self.mic:
+            return None
+        if self.volume:
+            return self.volume
+        
+        self.volume = self.mic.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None).QueryInterface(IAudioEndpointVolume)
+        return self.volume
 
     def add_listener(self, listener):
         try:
             self._listeners.add(listener)
             listener(self.status())
-            logging.info('AudioController: Registered mute change callback')
+            logging.info('AudioController: Registered status change callback')
         except Exception as e:
-            logging.warning('AudioController: Failed to register mute change callback: %s', e)
+            logging.warning('AudioController: Failed to register status change callback', exc_info=e)
 
     def remove_listener(self, listener):
-        try:
-            self._listeners.remove(listener)
-            logging.info('AudioController: UnRegistered mute change callback')
-        except Exception as e:
-            logging.warning('AudioController: Failed to unregister mute change callback: %s', e)
+        self._listeners.remove(listener)
+        logging.info('AudioController: UnRegistered status change callback')
 
     def mute(self):
         logging.info('AudioController: mute() called')
-        if self.volume:
-            self.volume.SetMute(1, None)
-            logging.info('AudioController: Microphone muted')
+        volume = self.get_volume()
+        if volume:
+            volume.SetMute(1, None)
+            logging.debug('AudioController: Microphone muted')
         else:
             logging.warning('AudioController: No microphone to mute')
 
     def unmute(self):
         logging.info('AudioController: unmute() called')
-        if self.volume:
-            self.volume.SetMute(0, None)
-            logging.info('AudioController: Microphone unmuted')
+        volume = self.get_volume()
+        if volume:
+            volume.SetMute(0, None)
+            logging.debug('AudioController: Microphone unmuted')
         else:
             logging.warning('AudioController: No microphone to unmute')
 
     def toggle(self):
         logging.info('AudioController: toggle() called')
-        if self.volume:
-            current = self.volume.GetMute()
-            self.volume.SetMute(0 if current else 1, None)
-            logging.info('AudioController: Microphone toggled to %s', 'unmuted' if current else 'muted')
+        volume = self.get_volume()
+        if volume:
+            current = volume.GetMute()
+            volume.SetMute(0 if current else 1, None)
+            logging.debug('AudioController: Microphone toggled to %s', 'unmuted' if current else 'muted')
         else:
             logging.warning('AudioController: No microphone to toggle')
 
     def is_muted(self):
-        if self.volume:
-            muted = bool(self.volume.GetMute())
+        volume = self.get_volume()
+        if volume:
+            muted = bool(volume.GetMute())
             # logging.info('AudioController: is_muted() -> %s', muted)
             return muted
         logging.warning('AudioController: is_muted() -> No microphone')
@@ -118,8 +192,8 @@ class _AudioController:
             return MicStatus.DISABLED
         if self.is_muted():
             return MicStatus.MUTED
-        elif self.is_in_use():
-            return MicStatus.INUSE
+        # elif self.is_in_use():
+        #     return MicStatus.INUSE
         else:
             return MicStatus.UNMUTED
     
