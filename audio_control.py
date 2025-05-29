@@ -1,6 +1,7 @@
 from ctypes import POINTER, cast, pointer
 import json
 import logging
+import threading
 from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume, IAudioEndpointVolumeCallback, IMMNotificationClient, EDataFlow, ERole
 from comtypes import COMObject, CLSCTX_ALL
 
@@ -61,8 +62,11 @@ class _AudioController:
         self.mic = None
         self.volume = None
         self._listeners = set()
+        self._reload_condition = threading.Condition()
         self.reload()
-        # self._register_device_callback()
+        self._register_device_callback()
+        self._reload_thread = threading.Thread(target=self.reload_runner, daemon=True)
+        self._reload_thread.start()
     
     def _update_state(self):
         status = self.status()
@@ -78,21 +82,25 @@ class _AudioController:
             return
         
         logging.info('AudioController: Updating active microphone -> (%s)', id)
-        self.reload()
+        with self._reload_condition:
+            self._reload_condition.notify()
         
 
     def reload(self):
         if self.mic is not None:
             logging.debug('AudioController: Unregister listener for old device (%s)', self.mic.GetId())
-            self.volume.UnregisterControlChangeNotify(self._mute_callback)
+            try:
+                self.volume.UnregisterControlChangeNotify(self._mute_callback)
+            except Exception as e:
+                logging.warning('AudioController: Error unregistering listener for old device', exc_info=e)
 
             logging.debug('AudioController: Unmute old device (%s)', self.mic.GetId())
-            self.unmute()
+            try:
+                self.unmute()
+            except Exception as e:
+                logging.warning('AudioController: Error unmuting old device', exc_info=e)
 
-            logging.debug('AudioController: Release old volume interface')
             self.volume = None
-
-            logging.debug('AudioController: Release old device (%s)', self.mic.GetId())
             self.mic = None
 
             logging.info('AudioController: Released old device')
@@ -105,16 +113,22 @@ class _AudioController:
             return
         
         self._register_mute_callback()
-
+    
+    def reload_runner(self):
+        while True:
+            with self._reload_condition:
+                logging.debug('AudioController: Waiting for the reload lock')
+                self._reload_condition.wait()
+                self.reload()
     
     def _register_mute_callback(self):
         if self.mic is None:
             return
         logging.debug('AudioController: Registering volume change listener')
         self._mute_callback = _MuteCallback(self._update_state)
-        self.volume = None
         self.volume = self.get_volume()
         self.volume.RegisterControlChangeNotify(self._mute_callback)
+        self._update_state()
 
     def _register_device_callback(self):
         if self.mic is None:

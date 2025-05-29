@@ -3,7 +3,7 @@ import logging
 
 # Setup logging
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.ERROR,
     format='[%(asctime)s] %(filename)s %(levelname)s: %(message)s',
     handlers=[logging.StreamHandler(sys.stdout)]
 )
