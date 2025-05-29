@@ -1,39 +1,55 @@
-# This workflow will install Python dependencies, run tests and lint with a single version of Python
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
-
 name: Python application
-
 on:
   push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
-
-permissions:
-  contents: read
+    branches:
+      - master
 
 jobs:
   build:
-
     runs-on: windows-latest
 
     steps:
-    - name: Python Executable Builder Action
-      # You may pin to the exact commit or the version.
-      # uses: kentsx/Python2Exe@19c006f72ad75562ab3fea363131a3615e5ff17c
-      uses: kentsx/Python2Exe@v1.1.1
-      with:
-        # the main python file (without .py)
-        main: main
-        # the output exe name
-        exe_name: better-mute
-        # the version of python
-        python_version: 3.13
-        pyinstaller_version: 6.13.0
-        # add the icon mark into your executable, the file path of your ico, e.g. logo.png or logo.ico
-        icon: resources/mic.ico
-        # Whether upload the build executable to artifact
-        artifact: true
-        # Whether create a release with the executable
-        release: true
-          
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.11
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt pyinstaller
+
+      - name: Set version variable
+        id: vars
+        run: echo "TAG_NAME=v$(date -u +%Y%m%d)" >> $GITHUB_ENV
+
+      - name: Build exe with PyInstaller
+        run: pyinstaller --clean --noconfirm better-mute.spec
+
+      - name: Get executable filename
+        id: exe
+        run: |
+          exe_file=$(find dist -name "*.exe" | head -n1)
+          echo "EXE_PATH=$exe_file" >> $GITHUB_ENV
+
+      - name: Create Release
+        id: create_release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG_NAME }}
+          name: Release ${{ env.TAG_NAME }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload exe to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG_NAME }}
+          files: ${{ env.EXE_PATH }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+
