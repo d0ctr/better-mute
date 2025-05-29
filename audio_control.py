@@ -1,9 +1,7 @@
-from ctypes import POINTER, cast, pointer
-import json
 import logging
 import threading
 from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume, IAudioEndpointVolumeCallback, IMMNotificationClient, EDataFlow, ERole
-from comtypes import COMObject, CLSCTX_ALL
+from comtypes import COMObject, CLSCTX_ALL, CoInitializeEx, CoUninitialize, COINIT_MULTITHREADED
 
 from commons import MicStatus
 
@@ -115,11 +113,25 @@ class _AudioController:
         self._register_mute_callback()
     
     def reload_runner(self):
-        while True:
-            with self._reload_condition:
-                logging.debug('AudioController: Waiting for the reload lock')
-                self._reload_condition.wait()
-                self.reload()
+        CoInitializeEx(COINIT_MULTITHREADED)
+        try:
+            while True:
+                with self._reload_condition:
+                    logging.debug('AudioController: reload_runner waiting for reload condition.')
+                    self._reload_condition.wait()
+                    logging.debug('AudioController: reload_runner received notification, proceeding to reload.')
+                    try:
+                        self.reload()
+                    except Exception as e:
+                        # Log exceptions specifically from the self.reload() call
+                        logging.error('AudioController: Exception during self.reload() in reload_runner', exc_info=e)
+        except Exception as e:
+            # Log other exceptions from the loop itself (e.g., if wait() is interrupted unexpectedly)
+            logging.error("AudioController: Exception in reload_runner's main loop", exc_info=e)
+        finally:
+            # Uninitialize COM for this thread before it exits.
+            logging.info("AudioController: reload_runner thread exiting, uninitializing COM.")
+            CoUninitialize()
     
     def _register_mute_callback(self):
         if self.mic is None:

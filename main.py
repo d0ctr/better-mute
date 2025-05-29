@@ -1,5 +1,6 @@
 import sys
 import logging
+import multiprocessing
 
 # Setup logging
 logging.basicConfig(
@@ -37,4 +38,5 @@ def main():
     sys.exit(app.exec_())
 
 if __name__ == "__main__":
+    multiprocessing.freeze_support()
     main()
