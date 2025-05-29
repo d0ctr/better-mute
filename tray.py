@@ -1,37 +1,36 @@
 from PyQt5.QtWidgets import QSystemTrayIcon, QMenu, QAction
 from PyQt5.QtGui import QIcon, QPixmap, QPainter, QColor
 from settings_window import SettingsWindow
-from settings import save_settings
-import startup
+from settings import Settings
 import logging
+
+from audio_control import AudioController
+from commons import Colors
+
 
 def create_dot_icon(color):
     pixmap = QPixmap(24, 24)
     pixmap.fill(QColor(0, 0, 0, 0))
     painter = QPainter(pixmap)
     painter.setRenderHint(QPainter.Antialiasing)
-    painter.setBrush(QColor(color))
-    painter.setPen(QColor(color))
+    painter.setBrush(color)
+    painter.setPen(color)
     painter.drawEllipse(2, 2, 20, 20)
     painter.end()
     return QIcon(pixmap)
 
 class TrayIcon(QSystemTrayIcon):
-    def __init__(self, audio_controller, settings, hotkeys=None, status_icon=None, parent=None):
+    def __init__(self, parent=None):
         super().__init__(parent)
-        self.audio_controller = audio_controller
-        self.settings = settings
-        self.hotkeys = hotkeys
-        self.status_icon = status_icon
         self.menu = QMenu()
 
         # Fallback icons (must be set before update_status)
         self.icon_muted = QIcon.fromTheme('audio-input-microphone-muted')
         if self.icon_muted.isNull():
-            self.icon_muted = create_dot_icon('#d32f2f')
+            self.icon_muted = create_dot_icon(Colors['RED'])
         self.icon_unmuted = QIcon.fromTheme('audio-input-microphone')
         if self.icon_unmuted.isNull():
-            self.icon_unmuted = create_dot_icon('#388e3c')
+            self.icon_unmuted = create_dot_icon(Colors['GREEN'])
 
         # Actions
         self.mute_action = QAction('Mute', self)
@@ -56,11 +55,12 @@ class TrayIcon(QSystemTrayIcon):
 
         self.setContextMenu(self.menu)
         self.setToolTip('Better Mute')
-        self.update_status(None)
+
+        AudioController.add_mute_change_callback(self.update_status)
+        self.show()
 
     def update_status(self, muted):
         # Update tray icon and tooltip based on mute status
-        muted = self.audio_controller.is_muted() if muted is None else muted
         if muted:
             self.setIcon(self.icon_muted)
             self.setToolTip('Microphone is muted')
@@ -70,37 +70,24 @@ class TrayIcon(QSystemTrayIcon):
 
     def _on_mute(self):
         logging.info('TrayIcon: Mute action triggered from tray')
-        self.audio_controller.mute()
+        AudioController.mute()
 
     def _on_unmute(self):
         logging.info('TrayIcon: Unmute action triggered from tray')
-        self.audio_controller.unmute()
+        AudioController.unmute()
 
     def _on_toggle(self):
         logging.info('TrayIcon: Toggle action triggered from tray')
-        self.audio_controller.toggle()
+        AudioController.toggle()
 
     def show_settings(self):
         logging.info('TrayIcon: Settings window opened')
+        
         def on_save(new_settings):
             logging.info('TrayIcon: Settings saved: %s', new_settings)
-            self.settings.update(new_settings)
-            save_settings(self.settings)
-            if self.hotkeys:
-                self.hotkeys.update_hotkeys(
-                    self.settings,
-                    self.audio_controller.mute,
-                    self.audio_controller.unmute,
-                    self.audio_controller.toggle
-                )
-            if self.status_icon:
-                self.status_icon.set_corner(self.settings.get('status_corner', 'top-right'))
-            if self.settings.get('start_on_startup', False):
-                startup.add_to_startup()
-            else:
-                startup.remove_from_startup()
-            self.update_status(None)
-        dlg = SettingsWindow(self.settings, on_save=on_save, parent=None)
+            Settings.update(new_settings)
+
+        dlg = SettingsWindow(on_save=on_save)
         dlg.exec_()
 
     def exit_app(self):

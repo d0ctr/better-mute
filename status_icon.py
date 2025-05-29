@@ -1,7 +1,12 @@
 from PyQt5.QtWidgets import QWidget
 from PyQt5.QtCore import Qt, QRect
-from PyQt5.QtGui import QPainter, QColor
+from PyQt5.QtGui import QPainter
 import logging
+
+from audio_control import AudioController
+from settings import Settings
+from commons import Colors
+
 
 CORNER_POSITIONS = {
     'top-left': (0, 0),
@@ -10,29 +15,23 @@ CORNER_POSITIONS = {
     'bottom-right': (1, 1),
 }
 
-Colors = {
-    'GREEN':  QColor(0,   200, 0, 255),
-    'RED':    QColor(200,   0, 0, 255),
-    'YELLOW': QColor(255, 200, 0, 255)
-}
-
 class StatusIcon(QWidget):
-    def __init__(self, audio_controller, settings, parent=None):
+    def __init__(self, parent=None):
         super().__init__(parent)
-        self.audio_controller = audio_controller
-        self.settings = settings
         self.margin = 2
-        self.corner = settings.get('status_corner', 'top-right')
+        
+        self.is_in_use = False
         screen = self.screen().geometry()
         min_dim = min(screen.width(), screen.height())
         self.dot_size = max(12, int(min_dim * 0.005))  # Minimum 8px
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setFixedSize(self.dot_size + self.margin * 2, self.dot_size + self.margin * 2)
-        self.update_position()
+
+        AudioController.add_mute_change_callback(self.update_status)
+        Settings.add_listener(self.update_settings)
+        
         self.show()
-        logging.info('StatusIcon: Shown at corner %s', self.corner)
-        self.update_status(None)
 
         # Try to make the window click-through (optional, Windows only)
         try:
@@ -44,9 +43,9 @@ class StatusIcon(QWidget):
             pass
 
     def update_status(self, muted):
-        self.is_muted = muted if muted is not None else self.audio_controller.is_muted()
-        self.is_in_use = self.audio_controller.is_in_use()
-        logging.info('StatusIcon: update_status() -> muted=%s, in_use=%s', self.is_muted, self.is_in_use)
+        self.is_muted = muted
+        # self.is_in_use = AudioController.is_in_use()
+        logging.info('StatusIcon: update_status() -> muted=%s', self.is_muted)
         self.update()
 
     def paintEvent(self, event):
@@ -63,15 +62,14 @@ class StatusIcon(QWidget):
         rect = QRect(self.margin, self.margin, self.dot_size, self.dot_size)
         painter.drawEllipse(rect)
 
-    def set_corner(self, corner):
-        self.corner = corner
-        logging.info('StatusIcon: set_corner(%s)', corner)
+    def update_settings(self, settings):
+        self.corner = settings.get('status_corner', 'top-right')
+        logging.info('StatusIcon: set_corner(%s)', self.corner)
         self.update_position()
-        self.update_status(None)
+        self.update()
 
     def update_position(self):
         screen = self.screen().geometry()
-        min_dim = min(screen.width(), screen.height())
         self.setFixedSize(self.dot_size + self.margin * 2, self.dot_size + self.margin * 2)
         x_factor, y_factor = CORNER_POSITIONS.get(self.corner, (1, 0))
         x = screen.left() + self.margin if x_factor == 0 else screen.right() - self.width() - self.margin

@@ -3,13 +3,14 @@ from PyQt5.QtWidgets import (
     QPushButton, QComboBox, QCheckBox, QApplication, QGroupBox, QSpacerItem, QSizePolicy
 )
 from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QPalette, QColor, QFont, QStyleHints
+from PyQt5.QtGui import QPalette, QColor, QFont
+from settings import Settings
 
 class SettingsWindow(QDialog):
-    def __init__(self, settings, on_save=None, parent=None):
+    def __init__(self, on_save=None, parent=None):
         super().__init__(parent)
         self.setWindowTitle('Settings')
-        self.settings = settings.copy()
+        self.settings = Settings.load_settings().copy()
         self.on_save = on_save
 
         # Use Fusion style for a modern look
