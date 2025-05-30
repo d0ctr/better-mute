@@ -28,9 +28,8 @@ class _Settings:
 
     def save_settings(self, settings):
         self._settings = settings
-        if os.path.exists(SETTINGS_FILE):
-            with open(SETTINGS_FILE, 'w') as f:
-                json.dump(self._settings, f, indent=4)
+        with open(SETTINGS_FILE, 'w') as f:
+            json.dump(self._settings, f, indent=4)
         
         self._notify()
     
@@ -40,9 +39,8 @@ class _Settings:
         
         self._settings.update(settings)
         
-        if os.path.exists(SETTINGS_FILE):
-            with open(SETTINGS_FILE, 'w') as f:
-                json.dump(self._settings, f, indent=4)
+        with open(SETTINGS_FILE, 'w') as f:
+            json.dump(self._settings, f, indent=4)
         
         self._notify()
     
