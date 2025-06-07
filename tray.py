@@ -1,5 +1,6 @@
-from PyQt5.QtWidgets import QSystemTrayIcon, QMenu, QAction
-from PyQt5.QtGui import QIcon, QPixmap, QPainter, QColor
+from PySide6.QtCore import QCoreApplication
+from PySide6.QtWidgets import QSystemTrayIcon, QMenu
+from PySide6.QtGui import QIcon, QPixmap, QPainter, QColor, QAction
 from settings_window import SettingsWindow
 from settings import Settings
 import logging
@@ -22,6 +23,7 @@ def create_dot_icon(color: QColor):
 class TrayIcon(QSystemTrayIcon):
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.logger = logging.getLogger('TrayIcon')
         self.menu = QMenu()
 
         # Fallback icons (must be set before update_status)
@@ -80,29 +82,24 @@ class TrayIcon(QSystemTrayIcon):
         self.setToolTip('Microphone is ' + tooltip)
 
     def _on_mute(self):
-        logging.info('TrayIcon: Mute action triggered from tray')
+        self.logger.info('Mute action triggered from tray')
         AudioController.mute()
 
     def _on_unmute(self):
-        logging.info('TrayIcon: Unmute action triggered from tray')
+        self.logger.info('Unmute action triggered from tray')
         AudioController.unmute()
 
     def _on_toggle(self):
-        logging.info('TrayIcon: Toggle action triggered from tray')
+        self.logger.info('Toggle action triggered from tray')
         AudioController.toggle()
 
     def show_settings(self):
-        logging.info('TrayIcon: Settings window opened')
-        
-        def on_save(new_settings):
-            logging.info('TrayIcon: Settings saved: %s', new_settings)
-            Settings.update(new_settings)
+        self.logger.info('Settings window opened')
 
-        dlg = SettingsWindow(on_save=on_save)
+        dlg = SettingsWindow()
         dlg.exec_()
 
     def exit_app(self):
-        logging.info('TrayIcon: Exit action triggered from tray')
+        self.logger.info('Exit action triggered from tray')
         AudioController.unmute()
-        from PyQt5.QtWidgets import QApplication
-        QApplication.quit() 
+        QCoreApplication.quit()

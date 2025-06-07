@@ -6,8 +6,9 @@ from settings import Settings
 
 class HotkeyManager:
     def __init__(self):
+        self.logger = logging.getLogger(self.__class__.__name__)
         self.hotkey_refs = {}
-        logging.info('HotkeyManager: Initialized')
+        self.logger.info('Initialized')
         Settings.add_listener(self.update_settings)
 
     def update_settings(self, settings):
@@ -17,7 +18,7 @@ class HotkeyManager:
         unmute_key = settings.get('hotkey_unmute', 'ctrl+alt+u').lstrip()
         toggle_key = settings.get('hotkey_toggle', 'ctrl+alt+t').lstrip()
 
-        logging.info('HotkeyManager: Registering hotkeys: mute=%s, unmute=%s, toggle=%s', mute_key, unmute_key, toggle_key)
+        self.logger.info('Registering hotkeys: mute=%s, unmute=%s, toggle=%s', mute_key, unmute_key, toggle_key)
         
         if len(mute_key) > 0:
             self.hotkey_refs['mute'] = keyboard.add_hotkey(mute_key, self._log_and_call('mute', AudioController.mute))
@@ -35,12 +36,12 @@ class HotkeyManager:
             except Exception:
                 pass
         if self.hotkey_refs:
-            logging.info('HotkeyManager: Unregistered all hotkeys')
+            self.logger.info('Unregistered all hotkeys')
         self.hotkey_refs = {}
 
 
     def _log_and_call(self, name, cb):
         def wrapper():
-            logging.info('HotkeyManager: Hotkey "%s" triggered', name)
+            self.logger.info('Hotkey "%s" triggered', name)
             cb()
-        return wrapper 
+        return wrapper

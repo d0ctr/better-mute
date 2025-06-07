@@ -1,17 +1,16 @@
-from PyQt5.QtWidgets import (
-    QDialog, QFormLayout, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
-    QPushButton, QComboBox, QCheckBox, QApplication, QGroupBox, QSpacerItem, QSizePolicy
+from PySide6.QtWidgets import (
+    QDialog, QFormLayout, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QLayout,
+    QPushButton, QComboBox, QCheckBox, QGroupBox, QSpacerItem, QSizePolicy, QApplication
 )
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QPalette, QColor, QFont
+from PySide6.QtCore import Qt, Slot
+from PySide6.QtGui import QPalette, QColor, QFont, QGuiApplication
 from settings import Settings
 
 class SettingsWindow(QDialog):
-    def __init__(self, on_save=None, parent=None):
+    def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle('Settings')
         self.settings = Settings.load_settings().copy()
-        self.on_save = on_save
 
         # Use Fusion style for a modern look
         QApplication.setStyle('Fusion')
@@ -30,7 +29,7 @@ class SettingsWindow(QDialog):
         palette.setColor(QPalette.Link, QColor(42, 130, 218))
         palette.setColor(QPalette.Highlight, QColor(42, 130, 218))
         palette.setColor(QPalette.HighlightedText, Qt.black)
-        QApplication.setPalette(palette)
+        QGuiApplication.setPalette(palette)
 
         # Set a larger, system-like font
         font = QFont()
@@ -109,12 +108,14 @@ class SettingsWindow(QDialog):
 
         # Set a minimum, scalable size and allow resizing
         base_width, base_height = 400, 320
-        scale = QApplication.desktop().devicePixelRatio() if hasattr(QApplication, 'desktop') else 1.0
-        min_width = int(base_width * scale)
-        min_height = int(base_height * scale)
-        self.setMinimumSize(min_width, min_height)
-        self.setWindowFlag(Qt.WindowMinMaxButtonsHint, False)
+        # scale = QGuiApplication.devicePixelRatio(QGuiApplication.instance())
+        # min_width = int(base_width * scale)
+        # min_height = int(base_height * scale)
+        self.setMinimumSize(base_width, base_height)
+        # self.setWindowFlag(Qt.WindowType.WindowMinMaxButtonsHint, False)
+        self.layout().setSizeConstraint(QLayout.SizeConstraint.SetFixedSize)
 
+    @Slot()
     def save(self):
         self.settings['hotkey_mute'] = self.mute_edit.text()
         self.settings['hotkey_unmute'] = self.unmute_edit.text()
@@ -122,6 +123,6 @@ class SettingsWindow(QDialog):
         self.settings['status_corner'] = self.corner_combo.currentText()
         self.settings['start_on_startup'] = self.startup_checkbox.isChecked()
         self.settings['show_level'] = self.level_checkbox.isChecked()
-        if self.on_save:
-            self.on_save(self.settings)
+        
+        Settings.update(self.settings)
         self.accept() 

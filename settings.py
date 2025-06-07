@@ -13,8 +13,8 @@ DEFAULT = {
 }
 
 class _Settings:
-
     def __init__(self) -> None:
+        self.logger = logging.getLogger('Settings')
         self._settings = None
         self._listeners = set()
         self.load_settings()
@@ -28,7 +28,7 @@ class _Settings:
         if os.path.exists(SETTINGS_FILE):
             with open(SETTINGS_FILE, 'r') as f:
                 self._settings.update(json.load(f))
-                logging.info('Settings loaded: %s', self._settings)
+                self.logger.info('loaded: %s', self._settings)
         
         self._notify()
 
@@ -57,7 +57,7 @@ class _Settings:
             try:
                 listener(self._settings)
             except Exception as e:
-                logging.error(e)
+                self.logger.error(e)
     
     def add_listener(self, listener):
         self._listeners.add(listener)
