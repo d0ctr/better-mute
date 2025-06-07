@@ -14,20 +14,20 @@ CORNER_POSITIONS = {
     'bottom-right': (1, 1),
 }
 
+MARGIN = 2
+
 class StatusIcon(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.margin = 2
         
         self.status = MicStatus.DISABLED
-        screen = self.screen().geometry()
-        min_dim = min(screen.width(), screen.height())
-        self.dot_size = max(12, int(min_dim * 0.005))  # Minimum 8px
+        self.corner = 'top-right'
+        self.level = 0.0
+
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
         self.setAttribute(Qt.WA_TranslucentBackground)
-        self.setFixedSize(self.dot_size + self.margin * 2, self.dot_size + self.margin * 2)
 
-        AudioController.add_listener(self.update_status)
+        AudioController.add_status_listener(self.update_status)
         Settings.add_listener(self.update_settings)
         
         self.show()
@@ -46,26 +46,41 @@ class StatusIcon(QWidget):
         logging.info('StatusIcon: update_status() -> status=%s', self.status)
         self.update()
 
+    def update_level(self, level: float):
+        self.level = level
+        # logging.debug('StatusIcon: update_level() -> level=%.2f', self.level)
+        self.update()
+
     def paintEvent(self, event):
+        # Colors
         painter = QPainter(self)
         color = MicStatus.toColor(self.status)
+        screen = self.screen().geometry()
+
         painter.setRenderHint(QPainter.Antialiasing)
         painter.setBrush(color)
         painter.setPen(Qt.NoPen)
-        rect = QRect(self.margin, self.margin, self.dot_size, self.dot_size)
-        painter.drawEllipse(rect)
+        
+        # Size
+        min_dim = min(screen.width(), screen.height())
+        dot_size = max(12, int(min_dim * 0.005))  # Minimum 12px
+        width = max(dot_size, int(dot_size * 10 * self.level))
+        self.setFixedSize(width + MARGIN * 2, dot_size + MARGIN * 2)
+
+        # Position
+        x_factor, y_factor = CORNER_POSITIONS.get(self.corner, (1, 0))
+        x = screen.left() + MARGIN if x_factor == 0 else screen.right() - self.width() - MARGIN
+        y = screen.top() + MARGIN if y_factor == 0 else screen.bottom() - self.height() - MARGIN
+        self.move(x, y)
+        
+        # Shape
+        rect = QRect(MARGIN, MARGIN, width, dot_size)
+        painter.drawRoundedRect(rect, dot_size / 2, dot_size / 2)
 
     def update_settings(self, settings):
         self.corner = settings.get('status_corner', 'top-right')
         logging.info('StatusIcon: set_corner(%s)', self.corner)
-        self.update_position()
-        self.update()
+        if settings.get('show_level', False):
+            AudioController.add_level_listener(self.update_level)
 
-    def update_position(self):
-        screen = self.screen().geometry()
-        self.setFixedSize(self.dot_size + self.margin * 2, self.dot_size + self.margin * 2)
-        x_factor, y_factor = CORNER_POSITIONS.get(self.corner, (1, 0))
-        x = screen.left() + self.margin if x_factor == 0 else screen.right() - self.width() - self.margin
-        y = screen.top() + self.margin if y_factor == 0 else screen.bottom() - self.height() - self.margin
-        self.move(x, y)
-        logging.info('StatusIcon: Moved to (%d, %d)', x, y)
+        self.update()

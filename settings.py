@@ -3,6 +3,14 @@ import os
 import logging
 
 SETTINGS_FILE = 'settings.json'
+DEFAULT = {
+    "hotkey_mute": "",
+    "hotkey_unmute": "",
+    "hotkey_toggle": "ctrl+alt+m",
+    "status_corner": "top-right",
+    "start_on_startup": False,
+    "show_level": False
+}
 
 class _Settings:
 
@@ -15,12 +23,12 @@ class _Settings:
         if self._settings is not None:
             return self._settings
         
+        self._settings = DEFAULT.copy()
+        
         if os.path.exists(SETTINGS_FILE):
             with open(SETTINGS_FILE, 'r') as f:
-                self._settings = json.load(f)
+                self._settings.update(json.load(f))
                 logging.info('Settings loaded: %s', self._settings)
-        else:
-            self._settings = {}
         
         self._notify()
 
@@ -57,9 +65,5 @@ class _Settings:
 
     def remove_listener(self, listener):
         self._listeners.remove(listener)
-        
-
-        
-
 
 Settings = _Settings()

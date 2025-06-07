@@ -54,7 +54,7 @@ class TrayIcon(QSystemTrayIcon):
         self.setContextMenu(self.menu)
         self.setToolTip('Better Mute')
 
-        AudioController.add_listener(self.update_status)
+        AudioController.add_status_listener(self.update_status)
         self.show()
 
     def update_status(self, status: MicStatus):

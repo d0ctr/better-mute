@@ -4,7 +4,7 @@ import multiprocessing
 
 # Setup logging
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.ERROR,
     format='%(asctime)s | %(threadName)-10s | %(name)-12s | %(levelname)-8s | %(message)s',
     handlers=[logging.StreamHandler(sys.stdout)]
 )

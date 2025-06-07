@@ -1,7 +1,8 @@
 import logging
 import threading
+from time import time
 from typing import Callable, Dict, List, Tuple, Type
-from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume, IAudioEndpointVolumeCallback, IMMNotificationClient, EDataFlow, ERole, IMMDevice, AUDIO_VOLUME_NOTIFICATION_DATA
+from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume, IAudioEndpointVolumeCallback, IMMNotificationClient, EDataFlow, ERole, IMMDevice, AUDIO_VOLUME_NOTIFICATION_DATA, IAudioMeterInformation
 from comtypes import COMObject, CLSCTX_ALL, CoInitializeEx, CoUninitialize, COINIT_MULTITHREADED, GUID
 
 from commons import MicStatus
@@ -9,7 +10,7 @@ from commons import MicStatus
 
 AUDIO_CONTROLLER_EVENT_GUID = GUID("{E005B3BF-A746-4300-9939-E1BBCC94C6C1}")
 
-class _MuteCallback(COMObject):
+class _VolumeCallback(COMObject):
     _com_interfaces_ = [IAudioEndpointVolumeCallback]
 
     def __init__(self, callback: Callable[[bool], None]):
@@ -82,7 +83,8 @@ class Device:
             self._dev: Type[IMMDevice] = dev
             self._id: str = dev.GetId()
             self._control: Type[IAudioEndpointVolume] = dev.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None).QueryInterface(IAudioEndpointVolume)
-            self._callback: Type[IAudioEndpointVolumeCallback] = None
+            self._meter: Type[IAudioMeterInformation] = dev.Activate(IAudioMeterInformation._iid_, CLSCTX_ALL, None).QueryInterface(IAudioMeterInformation)
+            self._volume_callback: Type[IAudioEndpointVolumeCallback] = None
             self._destroyed = False
             self.logger = logging.getLogger(str(self))
         else:
@@ -111,31 +113,35 @@ class Device:
         else:
             self.mute()
     
-    def muted(self):
+    def is_muted(self) -> bool:
         return self._control.GetMute()
     
-    def set_callback(self, callback: Callable[[bool], None]):
+    def set_volume_callback(self, callback: Callable[[bool], None]):
         self.logger.debug('Register volume callback')
-        if self._callback is not None:
-            self._callback.update(callback)
+        if self._volume_callback is not None:
+            self._volume_callback.update(callback)
             self.logger.info('Updated volume callback')
         else:
-            self._callback = _MuteCallback(callback)
-            self._control.RegisterControlChangeNotify(self._callback)
+            self._volume_callback = _VolumeCallback(callback)
+            self._control.RegisterControlChangeNotify(self._volume_callback)
             self.logger.info('Registered volume callback')
+
+    def get_level(self) -> float:
+        return 0.0 if self.is_muted() else self._meter.GetPeakValue()
 
     def destroy(self):
         self.logger.debug('Destroying device')
-        if self._callback is not None:
+        if self._volume_callback is not None:
             try:
-                self._control.UnregisterControlChangeNotify(self._callback)
+                self._control.UnregisterControlChangeNotify(self._volume_callback)
             except Exception as e:
                 self.logger.error('Error unregistering callback', exc_info=e)
             
-            self._callback = None
+            self._volume_callback = None
         
         self._control = None
         self._dev = None
+        self._meter = None
         self._destroyed = True
         self.logger.info('Destroyed device')
 
@@ -168,24 +174,26 @@ class _AudioController:
             ERole.eConsole       : EMPTY_DEVICE
         }
         self._devs_lock = threading.Lock()
-        self._threads = []
-
-        self._listeners = set()
+        # self._threads = []
+        self._level_listeners = set()
+        self._status_listeners = set()
 
         self.reload(ERole.eCommunications)
         self.reload(ERole.eMultimedia)
         self.reload(ERole.eConsole)
 
         self._register_device_callback()
+        self._level_start = False
+        self._level_notifier_thread = threading.Thread(target=self.level_notifier, daemon=True)
     
-    def _update_state(self, role: ERole) -> Callable[[bool], None]:
+    def _update_status(self, role: ERole) -> Callable[[bool], None]:
         def update(*_: bool):
             status = self.status(role=role)
-            for listener in self._listeners:
+            for listener in self._status_listeners:
                 try:
                     listener(status)
                 except Exception as e:
-                    logging.error('AudioController: Error calling audio controller listener for %s update', role, exc_info=e)
+                    logging.error('AudioController: Error calling status listener for %s update', role, exc_info=e)
         
         return update
     
@@ -199,10 +207,10 @@ class _AudioController:
 
         reload_thread = threading.Thread(target=self.reload_runner, args=(role,), daemon=True)
         reload_thread.start()
-        self._threads.append(reload_thread)
+        # self._threads.append(reload_thread)
 
     def reload(self, role: ERole):
-        old_state = self.status(role=role)
+        old_status = self.status(role=role)
         if self.devs.get(role) is not None:
             old_dev = self.devs.get(role)
             if not old_dev.destroyed():
@@ -233,9 +241,10 @@ class _AudioController:
             self.devs[role] = dev
 
             logging.debug('AudioController: Registering volume change listener')
-            callback = self._update_state(role)
-            dev.set_callback(callback)
-            match old_state:
+            callback = self._update_status(role)
+            dev.set_volume_callback(callback)
+
+            match old_status:
                 case MicStatus.MUTED:
                     dev.mute()
                 case MicStatus.UNMUTED:
@@ -256,27 +265,70 @@ class _AudioController:
             self.reload(role)
         except Exception as e:
             logging.error('AudioController: Exception during self.reload() in reload_runner for %s', role, exc_info=e)
-        finally:
-            logging.info("AudioController: reload_runner thread exiting, uninitializing COM.")
-            CoUninitialize()
-            self._devs_lock.release()
+
+        logging.info("AudioController: reload_runner thread exiting, uninitializing COM.")
+        CoUninitialize()
+        self._devs_lock.release()
+
+    def level_notifier(self):
+        CoInitializeEx(COINIT_MULTITHREADED)
+        last_log = 0
+        while self._level_start:
+            try:
+                if time() - last_log > 5:
+                    # log once in 5secs
+                    logging.debug('AudioController: level_notifier getting new level value (this is logged once every 5s instead of every time)')
+                    last_log = time()
+
+                level = self.level()
+                for listener in self._level_listeners:
+                    try:
+                        listener(level)
+                        pass
+                    except Exception as e:
+                        logging.error('AudioController: Error calling level listener', exc_info=e)
+            except Exception as e:
+                logging.error('AudioController: Error getting level', exc_info=e)
+            threading.Event().wait(0.1)  # Poll every 100ms
+        logging.debug('AudioController: level_notifier is stopped')
+        CoUninitialize()
 
     def _register_device_callback(self):
         logging.debug('AudioController: Registering device change listener')
         self._device_callback = _DeviceCallback(self._update_device)
         AudioUtilities.GetDeviceEnumerator().RegisterEndpointNotificationCallback(self._device_callback)
 
-    def add_listener(self, listener):
+    def add_status_listener(self, listener: Callable[[MicStatus], None]):
         try:
-            self._listeners.add(listener)
+            self._status_listeners.add(listener)
             listener(self.status())
             logging.info('AudioController: Registered status change callback')
         except Exception as e:
             logging.warning('AudioController: Failed to register status change callback', exc_info=e)
 
-    def remove_listener(self, listener):
-        self._listeners.remove(listener)
+    def remove_status_listener(self, listener: Callable[[MicStatus], None]):
+        self._status_listeners.remove(listener)
         logging.info('AudioController: Unregistered status change callback')
+
+    def add_level_listener(self, listener: Callable[[float], None]):
+        try:
+            self._level_listeners.add(listener)
+            if not self._level_start:
+                self._level_start = True
+                self._level_notifier_thread.start()
+
+            listener(self.level())
+            logging.info('AudioController: Registered level change callback')
+        except Exception as e:
+            logging.warning('AudioController: Failed to register level change callback', exc_info=e)
+
+    def remove_level_listener(self, listener: Callable[[float], None]):
+        self._level_listeners.remove(listener)
+        if not len(self._level_listeners):
+            self._level_stop = True
+            self._level_notifier_thread.join()
+
+        logging.info('AudioController: Unregistered level change callback')
 
     def mute(self, role: ERole | None=None):
         logging.info('AudioController: mute() called')
@@ -313,7 +365,7 @@ class _AudioController:
             logging.debug('AudioController: No main device found, skipping toggle')
             return
 
-        muted = main_dev.muted()
+        muted = main_dev.is_muted()
         toggled_devs = set()
         for role, dev in self.devs.items():
             if dev.destroyed():
@@ -330,10 +382,9 @@ class _AudioController:
 
     def is_muted(self, role: ERole | None=None):
         dev = self.get_dev(role=role)
-        if dev:
-            muted = dev.muted()
-            return muted
-        logging.warning('AudioController: is_muted() -> No microphone')
+        if not dev.destroyed():
+            return dev.is_muted()
+        logging.warning('AudioController: is_muted(%s) -> No microphone', 'main' if role is None else role)
         return False
 
     def is_in_use(self, role: ERole | None=None):
@@ -345,28 +396,33 @@ class _AudioController:
         dev = self.get_dev(role=role)
         if dev.destroyed():
             return MicStatus.DISABLED
-        if dev.muted():
+        if dev.is_muted():
             return MicStatus.MUTED
-        # elif self.is_in_use():
+        # if self.is_in_use():
         #     return MicStatus.INUSE
-        else:
-            return MicStatus.UNMUTED
+        return MicStatus.UNMUTED
+    
+    def level(self, role: ERole | None=None) -> float:
+        dev = self.get_dev(role=role)
+        if not dev.destroyed():
+            return dev.get_level()
+        logging.warning('AudioController: get_level(%s) -> No microphone', 'main' if role is None else role)
+        return 0.0
     
     def find_main_dev(self) -> Type[Device]:
         # The list is ordered based on priority, first one that exists is the "main" device
-        for role in [ERole.eCommunications, ERole.eMultimedia, ERole.eMultimedia]:
+        for role in [ERole.eCommunications, ERole.eMultimedia, ERole.eConsole]:
             dev = self.devs.get(role)
             if not dev.destroyed():
                 return dev
         
         return EMPTY_DEVICE
     
-    def get_dev(self, role: ERole | None=None):
+    def get_dev(self, role: ERole | None=None) -> Type[Device]:
         return self.find_main_dev() if role is None else self.devs.get(role)
 
-    def get_devs(self, role: ERole | None=None) -> List[Tuple[ERole, Device | None]]:
+    def get_devs(self, role: ERole | None=None) -> List[Tuple[ERole, Device]]:
         return self.devs.items() if role is None else [(role, self.devs.get(role))]
-
 
     
 AudioController = _AudioController()

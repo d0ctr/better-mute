@@ -87,6 +87,12 @@ class SettingsWindow(QDialog):
         self.startup_checkbox.setChecked(self.settings.get('start_on_startup', False))
         self.startup_checkbox.setToolTip("Enable to start the app automatically with Windows")
         main_layout.addWidget(self.startup_checkbox)
+        
+        # Show level option
+        self.level_checkbox = QCheckBox('Show microphone level')
+        self.level_checkbox.setChecked(self.settings.get('show_level', False))
+        self.level_checkbox.setToolTip("Enable to show microphone level")
+        main_layout.addWidget(self.level_checkbox)
 
         # Buttons
         btn_layout = QHBoxLayout()
@@ -115,6 +121,7 @@ class SettingsWindow(QDialog):
         self.settings['hotkey_toggle'] = self.toggle_edit.text()
         self.settings['status_corner'] = self.corner_combo.currentText()
         self.settings['start_on_startup'] = self.startup_checkbox.isChecked()
+        self.settings['show_level'] = self.level_checkbox.isChecked()
         if self.on_save:
             self.on_save(self.settings)
         self.accept() 

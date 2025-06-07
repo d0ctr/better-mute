@@ -12,10 +12,10 @@ class HotkeyManager:
 
     def update_settings(self, settings):
         self.unregister_hotkeys()
-        
-        mute_key   = settings.get('hotkey_mute', 'ctrl+alt+m')
-        unmute_key = settings.get('hotkey_unmute', 'ctrl+alt+u')
-        toggle_key = settings.get('hotkey_toggle', 'ctrl+alt+t')
+
+        mute_key   = settings.get('hotkey_mute', 'ctrl+alt+m').lstrip()
+        unmute_key = settings.get('hotkey_unmute', 'ctrl+alt+u').lstrip()
+        toggle_key = settings.get('hotkey_toggle', 'ctrl+alt+t').lstrip()
 
         logging.info('HotkeyManager: Registering hotkeys: mute=%s, unmute=%s, toggle=%s', mute_key, unmute_key, toggle_key)
         
