@@ -1,5 +1,5 @@
 from PySide6.QtWidgets import QWidget
-from PySide6.QtCore import Qt, QRect
+from PySide6.QtCore import Qt, QRect, QTimer, Slot
 from PySide6.QtGui import QPainter
 import logging
 
@@ -27,6 +27,9 @@ class StatusIcon(QWidget):
         self.level = 0.0
         self.show_level = False
 
+        self.level_timer = QTimer(self)
+        self.level_timer.timeout.connect(self.fetch_level)
+
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool | Qt.WindowType.WindowDoesNotAcceptFocus)
         self.setAttribute(Qt.WA_TranslucentBackground)
 
@@ -53,18 +56,24 @@ class StatusIcon(QWidget):
         self.level = level
         # self.logger.debug('update_level() -> level=%.2f', self.level)
         self.update()
+    
+    @Slot()
+    def fetch_level(self):
+        self.level = AudioController.level()
+        self.update()
 
     def update_settings(self, settings):
         self.corner = settings.get('status_corner', 'top-right')
 
-        new_show_level = settings.get('show_level', False)
-        if new_show_level and not self.show_level:
-            self.show_level = new_show_level
-            AudioController.add_level_listener(self.update_level)
-        elif not new_show_level and self.show_level:
-            AudioController.remove_level_listener(self.update_level)
+        show_level = settings.get('show_level', False)
         
-        self.logger.debug('update_settings({status_corner: %s, show_level: %s})', self.corner, new_show_level)
+        if show_level and not self.level_timer.isActive():
+            self.level_timer.start()
+        elif not show_level and self.level_timer.isActive():
+            self.level_timer.stop()
+            self.level = 0.0
+        
+        self.logger.debug('update_settings({status_corner: %s, show_level: %s})', self.corner, show_level)
         self.update()
 
     def paintEvent(self, _):
@@ -78,8 +87,6 @@ class StatusIcon(QWidget):
             painter.setPen(Qt.NoPen)
             
             # Size
-            # min_dim = min(screen.width(), screen.height())
-            # dot_size = max(10, int(min_dim * 0.005))  # Minimum 10px
             width = max(DOT_SIZE, int(DOT_SIZE * 10 * self.level))
             self.setFixedSize(width + MARGIN * 2, DOT_SIZE + MARGIN * 2)
 
