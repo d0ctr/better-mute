@@ -156,6 +156,7 @@ def main():
         from tray import TrayIcon
         from status_icon import StatusIcon
         from hotkeys import HotkeyManager
+        from startup import StartupManager
 
         # Start event loop
         logging.info('Application started')
@@ -170,6 +171,9 @@ def main():
 
         # Create tray icon
         TrayIcon()
+
+        # Create startup manager
+        StartupManager()
 
         # start listening for device changes
         AudioController.start()
