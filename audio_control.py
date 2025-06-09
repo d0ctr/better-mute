@@ -190,8 +190,7 @@ class Device:
     @staticmethod
     def get_default_id(role=ERole.eMultimedia, flow=EDataFlow.eCapture) -> str:
         try:
-            dev = AudioUtilities.GetDeviceEnumerator().GetDefaultAudioEndpoint(flow.value, role.value)
-            return dev.GetId() if dev else None
+            return AudioUtilities.GetDeviceEnumerator().GetDefaultAudioEndpoint(flow.value, role.value).GetId()
         except Exception as e:
             logging.warning('Device.get_default_id(role=%s,flow=%s) failed', role, flow, exc_info=e)
         return None
@@ -232,7 +231,8 @@ class _AudioController:
         self.logger.debug('Registering volume change listeners')
         for role, dev in self.devs.items():
             callback = self._update_status(role)
-            dev.set_volume_callback(callback)
+            if not dev.destroyed():
+                dev.set_volume_callback(callback)
             callback()
 
     
@@ -289,19 +289,20 @@ class _AudioController:
 
             self.devs[role] = dev
 
-            match old_status:
-                case MicStatus.MUTED:
-                    dev.mute()
-                case MicStatus.UNMUTED:
-                    dev.unmute()
-                case _:
-                    pass
+            if not dev.destroyed():
+                match old_status:
+                    case MicStatus.MUTED:
+                        dev.mute()
+                    case MicStatus.UNMUTED:
+                        dev.unmute()
+                    case _:
+                        pass
             
-            if self._started:
+            callback = self._update_status(role)
+            if self._started and not dev.destroyed():
                 self.logger.debug('Registering volume change listener')
-                callback = self._update_status(role)
                 dev.set_volume_callback(callback)
-                callback()
+            callback()
 
         except Exception as e:
             self.logger.error('Failed to initialize %s device', role, exc_info=e)

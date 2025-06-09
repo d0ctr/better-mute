@@ -16,6 +16,7 @@ CORNER_POSITIONS = {
 
 MARGIN = 2
 DOT_SIZE = 10
+LEVEL_POLLING_INTERVAL_MS = 1
 
 class StatusIcon(QWidget):
     def __init__(self, parent=None):
@@ -27,7 +28,7 @@ class StatusIcon(QWidget):
         self.level = 0.0
         self.show_level = False
 
-        self.level_timer = QTimer(self)
+        self.level_timer = QTimer(self, interval=LEVEL_POLLING_INTERVAL_MS)
         self.level_timer.timeout.connect(self.fetch_level)
 
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool | Qt.WindowType.WindowDoesNotAcceptFocus)
@@ -50,6 +51,12 @@ class StatusIcon(QWidget):
     def update_status(self, status: MicStatus):
         self.status = status
         self.logger.debug('update_status(%s)', self.status)
+
+        if self.level_timer.isActive() and status != MicStatus.UNMUTED:
+            self.level_timer.stop()
+        elif not self.level_timer.isActive() and self.show_level and status == MicStatus.UNMUTED:
+            self.level_timer.start()
+
         self.update()
 
     def update_level(self, level: float):
@@ -65,15 +72,15 @@ class StatusIcon(QWidget):
     def update_settings(self, settings):
         self.corner = settings.get('status_corner', 'top-right')
 
-        show_level = settings.get('show_level', False)
+        self.show_level = settings.get('show_level', False)
         
-        if show_level and not self.level_timer.isActive():
+        if self.show_level and not self.level_timer.isActive():
             self.level_timer.start()
-        elif not show_level and self.level_timer.isActive():
+        elif not self.show_level and self.level_timer.isActive():
             self.level_timer.stop()
             self.level = 0.0
         
-        self.logger.debug('update_settings({status_corner: %s, show_level: %s})', self.corner, show_level)
+        self.logger.debug('update_settings({status_corner: %s, show_level: %s})', self.corner, self.show_level)
         self.update()
 
     def paintEvent(self, _):

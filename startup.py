@@ -36,6 +36,7 @@ class StartupManager:
         shell = win32com.client.Dispatch('WScript.Shell')
         shortcut = shell.CreateShortCut(shortcut_path)
         shortcut.Targetpath = target
+        
         shortcut.Arguments = f'"{script}"'
         shortcut.WorkingDirectory = working_dir
         shortcut.IconLocation = icon

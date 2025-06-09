@@ -14,7 +14,7 @@ def is_running_as_exe():
     return getattr(sys, 'frozen', False)
 
 # Setup logging
-LOG_FORMAT = '%(asctime)s | %(threadName)-10s | %(name)-12s | %(levelname)-8s | %(message)s'
+LOG_FORMAT = '%(asctime)s | %(process)d | %(levelname)-8s | %(name)-12s | %(message)s'
 HANDLERS = []
 
 def get_temp_log_path():
@@ -25,7 +25,7 @@ def get_temp_log_path():
 if is_running_as_exe():
     # When running as exe, add file handler in temp directory
     file_handler = logging.FileHandler(get_temp_log_path())
-    file_handler.setFormatter(logging.Formatter(LOG_FORMAT))
+    # file_handler.setFormatter(logging.Formatter(LOG_FORMAT))
     HANDLERS.append(file_handler)
 else:
     HANDLERS.append(logging.StreamHandler(sys.stdout))
@@ -43,7 +43,7 @@ def parse_args():
     parser.add_argument('--mute', action='store_true', help='Mute microphone and exit')
     parser.add_argument('--unmute', action='store_true', help='Unmute microphone and exit')
     parser.add_argument('--stop', action='store_true', help='Stop all running better-mute processes')
-    return parser.parse_args()
+    return parser.parse_known_args()
 
 def get_pid_file():
     username = getuser()
@@ -126,7 +126,10 @@ def pid_file_manager():
             logging.error('Error cleaning up PID file', exc_info=e)
 
 def main():
-    args = parse_args()
+    args, unknown_args = parse_args()
+
+    for arg in unknown_args:
+        print()
     
     # Handle --logs argument
     if args.logs:
